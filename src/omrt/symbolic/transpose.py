@@ -21,7 +21,7 @@ import warnings
 from collections.abc import Sequence
 from typing import Any
 
-from music21 import converter, instrument, interval, key, stream
+from music21 import converter, instrument, interval, key, pitch, stream
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 
 from omrt.symbolic.instruments import resolve_instrument
@@ -93,9 +93,8 @@ def transpose_to_key(musicxml: str, target_key: str) -> str:
     _warn_if_theoretical(target)
     score = _parse(musicxml)
     source = detect_key(score)
-    assert source.tonic is not None and target.tonic is not None
 
-    iv = interval.Interval(noteStart=source.tonic, noteEnd=target.tonic)
+    iv = _shortest_transposition(source, target)
     transposed = score.transpose(iv, inPlace=False)
     assert transposed is not None
 
@@ -125,6 +124,30 @@ def transpose_for_instrument(musicxml: str, instrument_name: str) -> str:
 
     score.toWrittenPitch(inPlace=True)
     return _serialize(score)
+
+
+def _shortest_transposition(source: key.Key, target: key.Key) -> interval.Interval:
+    """Directed, correctly-spelled interval from the source tonic to the target tonic
+    that minimizes register shift.
+
+    The interval must be spelled (m2, A4, ...) so diatonic spelling survives — C major
+    to F# major sends B to E#. But tonic-to-tonic in a fixed octave can move the whole
+    piece up a major 7th (C -> B) when a descending minor 2nd is meant. So we try the
+    target tonic in nearby octaves and keep the smallest absolute interval; ties resolve
+    upward, which keeps C -> F# an ascending augmented 4th.
+    """
+    assert source.tonic is not None and target.tonic is not None
+    start = pitch.Pitch(source.tonic.name)
+    start.octave = 4
+    best: interval.Interval | None = None
+    for octave in (4, 3, 5):  # 4 first so a tritone tie stays ascending
+        end = pitch.Pitch(target.tonic.name)
+        end.octave = octave
+        candidate = interval.Interval(noteStart=start, noteEnd=end)
+        if best is None or abs(candidate.semitones) < abs(best.semitones):
+            best = candidate
+    assert best is not None
+    return best
 
 
 def _normalize_to_sounding(score: stream.Score) -> None:

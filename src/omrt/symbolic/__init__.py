@@ -4,6 +4,7 @@ MusicXML in, transposed MusicXML out (music21), rendered to PDF (Verovio). Publi
 surface: the three transposition operations and the renderer interface.
 """
 
+from omrt.symbolic.instruments import INSTRUMENTS as _INSTRUMENTS
 from omrt.symbolic.render import Renderer, VerovioRenderer
 from omrt.symbolic.transpose import (
     transpose_by_interval,
@@ -17,4 +18,5 @@ __all__ = [
     "transpose_for_instrument",
     "Renderer",
     "VerovioRenderer",
+    "_INSTRUMENTS",
 ]

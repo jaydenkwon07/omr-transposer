@@ -58,6 +58,20 @@ the dependency list after the spike (see below). The rest is the asset.
 
 - Mode inference when only a plain `KeySignature` is present (currently assume major +
   warn; ADR 0003).
-- Register choice in to-key transposition: we use the simple directed interval between
-  tonic pitches, which can shift octave for distant keys. Spelling and key signature are
-  correct regardless; register nicety was out of scope.
+- Modulating scores: `_force_key_signature` sets every key signature to the target, so a
+  score that modulates loses its relative modulation in the notated signatures (notes are
+  still transposed by one interval). Documented as an xfail in the trap suite; deciding
+  the right behavior belongs in ADR 0002's scope section.
+- Two trap-suite xfails mark scope questions ADR 0002 has actually now *decided*
+  differently than the tests assume (theoretical target key: accept + warn, not reject).
+  Those xfails should be converted to real assertions of the decided behavior, or the
+  decision revisited.
+
+## Resolved during the trap suite
+
+- **Register / "short way" in to-key transposition.** Previously we used the raw
+  tonic-to-tonic interval, which sent C major → B major up a major 7th. Now
+  `_shortest_transposition` picks the nearest octave (ties resolve upward, keeping C → F#
+  an ascending A4), so C → B descends a minor 2nd. This was the only real bug the trap
+  suite found; everything else (accidental display status, chord-symbol figures, Bb
+  written-part idempotency) already held.
