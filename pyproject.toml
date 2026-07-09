@@ -1,0 +1,36 @@
+[project]
+name = "omr-transposer"
+version = "0.0.0"
+description = "Photo of sheet music in, transposed notation out. Project 0: symbolic layer."
+requires-python = ">=3.12"
+dependencies = [
+    "music21>=9.1",
+    "verovio>=4.3",
+    "cairosvg>=2.7",
+    "pypdf>=4.2",
+]
+
+[project.scripts]
+omrt = "omrt.symbolic.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/omrt"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
