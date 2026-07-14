@@ -116,28 +116,67 @@ every model. They are the most valuable artifacts in the repo.
 
 ---
 
+## Project 1 — data generator (ACTIVE)
+
+**Seam 1, concrete** (signature unchanged; this is how we honor it):
+
+    generate(n: int, config: GenConfig) -> Iterator[tuple[Image, MusicXMLStr]]
+
+- The label is MusicXML, always — never a token vocabulary (that's per-model, downstream).
+- Labels pass through `spelling.normalize_spelling()` at generation: one score, one canonical
+  enharmonic spelling, so the model is never punished for predicting F# when the label happens
+  to say Gb for identical pixels. This is Transcoda's one-to-many lesson applied early. Full
+  token-level canonicalization waits for Project 3's vocabulary.
+- Every pair MUST be reproducible from `(corpus_id, seed, config_hash)`. Non-negotiable: it is
+  the only thing that answers "did the model get worse, or the data?"
+
+**Variance axes, in priority order:**
+
+1. **Engraver** (the neglected, highest-value axis): Verovio, LilyPond, MuseScore CLI, all live
+   at once behind the Project 0 `Renderer` protocol. Record which engraver made each sample.
+   Three engravers beat a thousand augmentations of one.
+2. Photometric: lighting gradient, shadow, blur, JPEG artifact, moiré.
+3. Geometric: perspective, page curl, rotation, crop. **Watch the crop** — cutting a measure off
+   the page while the label still claims it is this project's silent killer.
+4. Semantic: the *corpus* must be diverse (key sig, time sig, meter), not just the images.
+
+**Verified render gotcha:** Verovio SVG has a transparent background. Rasterize with
+`background_color='white'` or the image collapses to solid black in grayscale. Confirmed:
+Verovio → cairosvg → PNG renders correct glyphs with a white background.
+
+---
+
 <!-- BEGIN MUTABLE STATUS — the only section Claude may edit without asking. -->
 
 ## Status
 
-**Current project:** 0 — symbolic layer.
+**Current project:** 1 — data generator.
 
-**What exists:** nothing yet.
+**What exists:** `symbolic/` (transpose, spelling, instruments, render), the CLI. `datagen/`:
+corpus loader (voice→single-staff, piano→grand-staff units; ADR 0006), `Engraver` protocol
+with VerovioEngraver live end-to-end (rsvg, white bg) and LilyPond/MuseScore stubbed, seeded
+augment (photometric + geometric with mask-based crop safety, ADR 0007), MusicXML labels,
+`dataset.write_dataset` + manifest, and `generate()` (seam 1). ADRs 0005–0008.
 
-**What survived from previous projects:** n/a.
+**What survived from Project 0:** the `Renderer` protocol (now has a raster sibling
+`Engraver`, sharing Verovio init); `spelling.normalize_spelling()` (now also normalizes
+generation labels); every verified `music21` trap in `test_traps.py`.
 
-**Open question I'm stuck on:** n/a.
+**Open question I'm stuck on:** corpus is settled (OpenScore Lieder via unit extraction;
+PDMX scaling later). Next: implement the LilyPond + MuseScore engravers so the 3-engraver
+coverage goal (currently an xfail) goes green.
 
 <!-- END MUTABLE STATUS -->
 
 ---
 
-## Non-goals (right now)
+## Non-goals (Project 1)
 
-- **Do not scaffold `models/`, `datagen/`, or `eval/`.** Do not install torch. Do not create
-  placeholder files for future projects. Empty directories with `.gitkeep` are acceptable;
-  stub classes are not.
-- **Do not build a web UI, API, or mobile app.** Project 0 is a CLI.
+- **No model. No torch. No training dataloader** — the dataloader is Project 2. Do not
+  scaffold `models/` or `eval/`; empty dirs with `.gitkeep` are fine, stub classes are not.
+- **Do not tokenize labels.** MusicXML is the label; output vocabularies come later.
+- **Single-staff and piano grand staff only for now.** No full multi-instrument scores yet.
+- **Do not build a web UI, API, or mobile app.**
 - No handwritten manuscript support, ever. Printed music only.
 - No audio, no MIDI playback, no synthesis.
 - Do not attempt to use an LLM to read notation from an image. It does not work and is not
@@ -154,8 +193,10 @@ every model. They are the most valuable artifacts in the repo.
 
 ## Maintaining this file
 
-This file is loaded into every session. It must stay **under 200 lines**. It is a contract,
-not a changelog.
+This file is loaded into every session. **Prefer to keep it lean** — every line costs context
+in every session — but there is no hard limit, and it's fine to grow when new content earns its
+place. It is a contract, not a changelog: the test for any addition is "would a fresh session be
+wrong without this?", not "is there room?"
 
 **Claude may edit, without asking:** the MUTABLE STATUS block only.
 
@@ -181,9 +222,9 @@ When a project completes, in this order:
 
 1. Write `docs/retro/project-N.md`: what shipped, what got thrown away, what surprised you,
    what the numbers were.
-2. **Prune this file.** Default gravity is accretion, so make the ritual explicitly about
-   deletion. Remove non-goals that no longer apply. Remove conventions nobody follows.
-   Remove references you never opened. If the file grew, you did it wrong.
+2. **Prune this file.** Growth is allowed, but a project boundary is the moment to spend a
+   few minutes deleting what's now dead: non-goals that no longer apply, conventions nobody
+   follows, references you never opened. Add freely; just don't let stale content ride along.
 3. Update the MUTABLE STATUS block: bump the project, record what survived.
 4. Only then, add anything new — and only if a fresh session would be wrong without it.
 
