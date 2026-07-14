@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import warnings
-
+import pytest
 from helpers import key_sharps, make_score, pitches_of
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -50,9 +49,8 @@ def test_no_spurious_double_accidentals(target: str) -> None:
                 assert p.name in diatonic, f"spurious {p.name} in {target}"
 
 
-def test_theoretical_key_is_accepted_with_warning() -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        out = transpose_to_key(make_score(C_MAJOR_SCALE), "G# major")
-    assert key_sharps(out) == 8
-    assert any("theoretical" in str(w.message) for w in caught)
+def test_theoretical_key_is_rejected() -> None:
+    """ADR 0004: a >7-accidental key cannot be notated conventionally, so we reject
+    and point at the practical enharmonic rather than emit a double-sharp signature."""
+    with pytest.raises(ValueError, match="theoretical"):
+        transpose_to_key(make_score(C_MAJOR_SCALE), "G# major")

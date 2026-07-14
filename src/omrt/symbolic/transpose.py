@@ -90,8 +90,9 @@ def transpose_to_key(musicxml: str, target_key: str) -> str:
     signature matches the target, and spurious double accidentals are normalized.
     """
     target = parse_key(target_key)
-    _warn_if_theoretical(target)
+    _reject_if_theoretical(target)
     score = _parse(musicxml)
+    _reject_if_modulating(score)
     source = detect_key(score)
 
     iv = _shortest_transposition(source, target)
@@ -180,14 +181,35 @@ def _force_key_signature(score: stream.Score, target: key.Key) -> None:
         part.insert(0, copy.deepcopy(desired))
 
 
-def _warn_if_theoretical(target: key.Key) -> None:
-    """Theoretical keys (>7 accidentals, e.g. G# major) are accepted as requested,
-    but we point at the practical enharmonic. See ADR 0002."""
+def _reject_if_theoretical(target: key.Key) -> None:
+    """Reject theoretical target keys (>7 accidentals, e.g. G# major).
+
+    Such a key needs double sharps/flats in its signature and cannot be notated with a
+    conventional key signature. Rather than emit a page no reader expects, we reject and
+    name the practical enharmonic (Ab major for G# major) the user should request. See
+    ADR 0004, which supersedes the accept-and-warn decision in ADR 0002."""
     if abs(target.sharps) > 7 and target.tonic is not None:
         enharmonic = target.tonic.getEnharmonic()
         practical = enharmonic.name.replace("-", "b") if enharmonic is not None else "its enharmonic"
-        warnings.warn(
-            f"{target} is a theoretical key ({target.sharps} sharps/flats); "
-            f"consider {practical} {target.mode} for a practical key signature",
-            stacklevel=3,
+        raise ValueError(
+            f"{target} is a theoretical key ({target.sharps} sharps/flats) and cannot be "
+            f"notated conventionally; request {practical} {target.mode} instead"
+        )
+
+
+def _reject_if_modulating(score: stream.Score) -> None:
+    """Reject scores that change key partway through.
+
+    ``transpose_to_key`` computes a single source→target interval and applies it
+    uniformly, so a modulating score has no well-defined answer: honoring the target for
+    the first key wrongly shifts every later section. We reject rather than silently
+    transpose by the first key. A caller who wants a uniform shift regardless of key
+    should use :func:`transpose_by_interval`. See ADR 0004."""
+    sigs = list(score.recurse().getElementsByClass(key.KeySignature))
+    distinct = sorted({sig.sharps for sig in sigs})
+    if len(distinct) > 1:
+        raise ValueError(
+            f"score modulates (key signatures with {distinct} sharps); to-key "
+            "transposition requires a single key. Use transpose_by_interval for a "
+            "uniform shift."
         )

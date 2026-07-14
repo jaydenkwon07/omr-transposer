@@ -1,6 +1,7 @@
 # 0002 — Enharmonic spelling: keep diatonic doubles, respell spurious ones
 
 Status: accepted (Project 0, 2026-07-09)
+Note: the "Theoretical target keys" decision below is superseded by [0004](0004-reject-out-of-scope-to-key.md) (reject instead of accept-and-warn). The enharmonic-spelling decision stands.
 
 ## Context
 

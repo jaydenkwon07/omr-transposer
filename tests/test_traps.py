@@ -164,19 +164,18 @@ def test_inferred_pitch_transposes_differently():
 
 
 # --- TRAP 9: scope --------------------------------------------------------
-# Document behavior rather than guess at it. Both of these should be decided
-# in ADR 0002, not left to whatever music21 happens to do.
+# ADR 0004 decided both: reject rather than guess. A theoretical target key
+# (>7 accidentals) and a modulating input each raise ValueError; the caller who
+# wants either must ask for a practical enharmonic or use interval mode instead.
 
-@pytest.mark.xfail(reason="ADR 0002: undecided - respell as Ab, or reject?")
 def test_target_key_beyond_seven_accidentals(c_major_scale):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="theoretical"):
         transpose_to_key(c_major_scale, "G# major")
 
 
-@pytest.mark.xfail(reason="ADR 0002: undecided - first key, or reject?")
 def test_modulating_score(modulating):
-    out = transpose_to_key(modulating, "D major")
-    assert keysigs(out) == [2, 4]  # C->D is +2; G->A is +3 sharps
+    with pytest.raises(ValueError, match="modulates"):
+        transpose_to_key(modulating, "D major")
 
 
 def test_ottava_survives(with_ottava):
