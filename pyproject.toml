@@ -10,6 +10,17 @@ dependencies = [
     "pypdf>=4.2",
 ]
 
+[project.optional-dependencies]
+# Project 1 raster pipeline. Kept out of core so the Project 0 CLI (transpose +
+# PDF render) installs without the heavy image stack. opencv is pinned because
+# warpPerspective/remap and JPEG encoding are only byte-reproducible within one
+# OpenCV build — the determinism guarantee is same-machine (see ADR 0008).
+datagen = [
+    "numpy>=2.0",
+    "pillow>=10.3",
+    "opencv-python-headless==4.10.0.84",
+]
+
 [project.scripts]
 omrt = "omrt.symbolic.cli:main"
 
@@ -31,6 +42,19 @@ packages = ["src/omrt"]
 python_version = "3.12"
 strict = true
 files = ["src"]
+
+# cv2 ships inline stubs whose overloads fight strict mode over trivia (borderValue
+# Sequence[float], Mat vs ndarray). Treat it as opaque; we restore typing where we return
+# a cv2 result. cairosvg has no stubs at all.
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["cairosvg.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
