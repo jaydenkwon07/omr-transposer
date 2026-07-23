@@ -154,17 +154,20 @@ Verovio → cairosvg → PNG renders correct glyphs with a white background.
 
 **What exists:** `symbolic/` (transpose, spelling, instruments, render), the CLI. `datagen/`:
 corpus loader (voice→single-staff, piano→grand-staff units; ADR 0006), `Engraver` protocol
-with VerovioEngraver live end-to-end (rsvg, white bg) and LilyPond/MuseScore stubbed, seeded
-augment (photometric + geometric with mask-based crop safety, ADR 0007), MusicXML labels,
-`dataset.write_dataset` + manifest, and `generate()` (seam 1). ADRs 0005–0008.
+with **all three engravers live end-to-end** — Verovio (rsvg, white bg), MuseScore 4, and
+LilyPond (ADR 0009) — seeded augment (photometric + geometric with mask-based crop safety,
+ADR 0007), MusicXML labels, `dataset.write_dataset` + manifest, and `generate()` (seam 1).
+ADRs 0005–0009.
 
 **What survived from Project 0:** the `Renderer` protocol (now has a raster sibling
 `Engraver`, sharing Verovio init); `spelling.normalize_spelling()` (now also normalizes
 generation labels); every verified `music21` trap in `test_traps.py`.
 
-**Open question I'm stuck on:** corpus is settled (OpenScore Lieder via unit extraction;
-PDMX scaling later). Next: implement the LilyPond + MuseScore engravers so the 3-engraver
-coverage goal (currently an xfail) goes green.
+**Open question I'm stuck on:** nothing blocking. Corpus is settled (OpenScore Lieder via
+unit extraction; PDMX scaling later). Engraver is bound to the unit, so diversity comes from
+corpus breadth (ADR 0009) — a large corpus gives ~even 3-engraver coverage; a tiny one looks
+lopsided. Possible next: per-unit multi-engraver sampling (render one unit by all three) if
+the duplication proves worthwhile; otherwise Project 1 is essentially complete.
 
 <!-- END MUTABLE STATUS -->
 
