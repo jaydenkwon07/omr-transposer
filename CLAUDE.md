@@ -157,17 +157,25 @@ corpus loader (voice→single-staff, piano→grand-staff units; ADR 0006), `Engr
 with **all three engravers live end-to-end** — Verovio (rsvg, white bg), MuseScore 4, and
 LilyPond (ADR 0009) — seeded augment (photometric + geometric with mask-based crop safety,
 ADR 0007), MusicXML labels, `dataset.write_dataset` + manifest, and `generate()` (seam 1).
-ADRs 0005–0009.
+`scripts/build_corpus.py` materializes a reproducible, diversity-weighted corpus from the
+music21 core (per-collection caps; `--include-dir` folds in a local grand-staff source),
+writing `CORPUS.json` (music21 version, recipe, per-file sha256) so `corpus_id` has recorded
+provenance. ADRs 0005–0009.
 
 **What survived from Project 0:** the `Renderer` protocol (now has a raster sibling
 `Engraver`, sharing Verovio init); `spelling.normalize_spelling()` (now also normalizes
 generation labels); every verified `music21` trap in `test_traps.py`.
 
-**Open question I'm stuck on:** nothing blocking. Corpus is settled (OpenScore Lieder via
-unit extraction; PDMX scaling later). Engraver is bound to the unit, so diversity comes from
-corpus breadth (ADR 0009) — a large corpus gives ~even 3-engraver coverage; a tiny one looks
-lopsided. Possible next: per-unit multi-engraver sampling (render one unit by all three) if
-the duplication proves worthwhile; otherwise Project 1 is essentially complete.
+**Open question I'm stuck on:** two pipeline bugs surfaced the moment `generate()` ran
+against a *diverse* corpus (the mixed music21 build), neither of which the short, uniform
+Bach chorales ever triggered — both still OPEN, `augment.py`/`generate.py` unpatched:
+(1) multi-page works stack taller than OpenCV's `SHRT_MAX` limit, crashing `warpAffine`/
+`remap` in `_apply_geometric`; (2) `canonical_musicxml()` is called *outside* the
+`try/except EngraverError` in `generate_with_meta`, so a score music21 can't re-export
+(`MusicXMLExportException`) aborts a whole run instead of skipping the unit. Fix both (TDD)
+before regenerating; the oversized-page fix needs a design call (skip vs. downscale). No
+end-to-end mixed dataset exists yet, so the three-engraver thesis still has only passing
+tests, no generated set demonstrating it. Deferred: per-unit multi-engraver sampling.
 
 <!-- END MUTABLE STATUS -->
 
