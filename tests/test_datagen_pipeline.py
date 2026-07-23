@@ -20,7 +20,8 @@ from omrt.datagen import (GenConfig, build_engravers, generate, load_corpus,
 from omrt.datagen.corpus import (GRAND_STAFF, SINGLE_STAFF,
                                  InferredSpellingWarning, _unit_groups,
                                  _warn_on_inferred_spelling)
-from omrt.datagen.engravers import VerovioEngraver
+from omrt.datagen.engravers import (LilyPondEngraver, MuseScoreEngraver,
+                                    VerovioEngraver)
 
 _HAVE_RSVG = VerovioEngraver().available()
 needs_rsvg = pytest.mark.skipif(not _HAVE_RSVG, reason="rsvg-convert not installed")
@@ -149,10 +150,51 @@ def test_engraver_selection_covers_all_available() -> None:
     assert seen == {"verovio", "lilypond", "musescore"}
 
 
-@pytest.mark.xfail(reason="lilypond/musescore engravers are stubs until wired (Project 1 TODO)")
-def test_all_three_real_engravers_available() -> None:
+_HAVE_MSCORE = MuseScoreEngraver().available()
+_HAVE_LILY = LilyPondEngraver().available()
+needs_mscore = pytest.mark.skipif(not _HAVE_MSCORE, reason="MuseScore binary not installed")
+needs_lily = pytest.mark.skipif(not _HAVE_LILY, reason="LilyPond binary not installed")
+
+
+@pytest.mark.parametrize(
+    "name, guard",
+    [
+        pytest.param("musescore", _HAVE_MSCORE, marks=needs_mscore),
+        pytest.param("lilypond", _HAVE_LILY, marks=needs_lily),
+    ],
+)
+def test_engraver_is_wired_not_a_stub(name: str, guard: bool) -> None:
+    """MuseScore and LilyPond are real engravers, not stubs: where the binary is present the
+    engraver must report available and join the live set. Breaking the Verovio monoculture
+    is the whole point of Project 1's engraver thesis (CLAUDE.md)."""
+    assert name in {e.name for e in build_engravers(("verovio", name))}
+
+
+@needs_mscore
+@needs_lily
+def test_all_three_engravers_go_live() -> None:
+    """The 3-engraver coverage goal, green: with every backend installed, all three are
+    selected — no silent monoculture."""
     live = {e.name for e in build_engravers(("verovio", "lilypond", "musescore"))}
     assert live == {"verovio", "lilypond", "musescore"}
+
+
+@pytest.mark.parametrize(
+    "engraver",
+    [
+        pytest.param(MuseScoreEngraver(), marks=needs_mscore, id="musescore"),
+        pytest.param(LilyPondEngraver(), marks=needs_lily, id="lilypond"),
+    ],
+)
+def test_real_engraver_renders_a_legible_page(engraver: object) -> None:
+    """Each real backend turns MusicXML into an actual grayscale page — not blank, not
+    solid black. Exercises the render path itself, not just availability."""
+    xml = _single_staff_xml("D", "4/4", ["D4", "E4", "F#4", "G4", "A4", "B4"])
+    img = engraver.to_image(xml, dpi=100)  # type: ignore[attr-defined]
+    assert img.dtype == np.uint8 and img.ndim == 2
+    ink = float((img < 128).mean())
+    assert 0.001 < ink < 0.5, f"{engraver.name} ink fraction {ink} looks blank or black"  # type: ignore[attr-defined]
+    assert img.max() > 200, "no bright paper"
 
 
 # --- manifest ----------------------------------------------------------------

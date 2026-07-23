@@ -17,7 +17,7 @@ import subprocess
 import cv2
 import numpy as np
 
-from omrt.datagen.engravers.base import EngraverError
+from omrt.datagen.engravers.base import EngraverError, stack_vertically
 from omrt.datagen.types import Image, MusicXMLStr
 from omrt.symbolic.render import RenderError, render_verovio_svgs
 
@@ -37,7 +37,7 @@ class VerovioEngraver:
         except RenderError as exc:
             raise EngraverError(str(exc)) from exc
         pages = [self._svg_to_gray(svg, dpi) for svg in svgs]
-        return _stack_vertically(pages)
+        return stack_vertically(pages)
 
     def _svg_to_gray(self, svg: str, dpi: int) -> Image:
         exe = shutil.which(_RSVG)
@@ -61,18 +61,3 @@ class VerovioEngraver:
         if gray is None:
             raise EngraverError(f"{_RSVG} produced a PNG that OpenCV could not decode")
         return np.asarray(gray, dtype=np.uint8)
-
-
-def _stack_vertically(pages: list[Image]) -> Image:
-    """Concatenate per-page rasters into one tall page, right-padding narrower pages with
-    paper so widths match. Keeps image and label 1:1 for multi-page scores."""
-    if not pages:
-        raise EngraverError("no pages to stack")
-    if len(pages) == 1:
-        return pages[0]
-    width = max(p.shape[1] for p in pages)
-    padded = [
-        cv2.copyMakeBorder(p, 0, 0, 0, width - p.shape[1], cv2.BORDER_CONSTANT, value=255)
-        for p in pages
-    ]
-    return np.vstack(padded).astype(np.uint8)

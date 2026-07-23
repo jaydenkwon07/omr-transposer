@@ -12,8 +12,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-# The engravers that are actually wired end-to-end today. lilypond/musescore are stubs
-# (available() is False) until implemented, so build_engravers drops them silently.
+# All three are wired end-to-end (ADR 0009). Each depends on external binaries, so any
+# whose backend is missing on this machine reports available() False and build_engravers
+# drops it silently — a Verovio-only box still generates, just without the diversity.
 DEFAULT_ENGRAVERS: tuple[str, ...] = ("verovio", "lilypond", "musescore")
 
 
