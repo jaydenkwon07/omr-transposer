@@ -166,16 +166,35 @@ provenance. ADRs 0005–0009.
 `Engraver`, sharing Verovio init); `spelling.normalize_spelling()` (now also normalizes
 generation labels); every verified `music21` trap in `test_traps.py`.
 
-**Open question I'm stuck on:** two pipeline bugs surfaced the moment `generate()` ran
-against a *diverse* corpus (the mixed music21 build), neither of which the short, uniform
-Bach chorales ever triggered — both still OPEN, `augment.py`/`generate.py` unpatched:
-(1) multi-page works stack taller than OpenCV's `SHRT_MAX` limit, crashing `warpAffine`/
-`remap` in `_apply_geometric`; (2) `canonical_musicxml()` is called *outside* the
-`try/except EngraverError` in `generate_with_meta`, so a score music21 can't re-export
-(`MusicXMLExportException`) aborts a whole run instead of skipping the unit. Fix both (TDD)
-before regenerating; the oversized-page fix needs a design call (skip vs. downscale). No
-end-to-end mixed dataset exists yet, so the three-engraver thesis still has only passing
-tests, no generated set demonstrating it. Deferred: per-unit multi-engraver sampling.
+**NEXT SESSION START HERE — Project 2 is designed but not implemented (2026-07-24).**
+We decided to begin Project 2 (CRNN+CTC). Stage A (seam 4, `src/omrt/eval/`) is fully
+designed and the spec is committed at
+`docs/superpowers/specs/2026-07-24-project2-seam4-design.md` — read it first; it is the
+source of truth. Nothing is implemented: still on branch `project-1-datagen`, no code
+written, this file unchanged below the status block.
+
+To implement, the spec's first two steps are: (1) `git switch -c project-2-crnn`;
+(2) install `~/Downloads/CLAUDE(1).md` as this repo's `CLAUDE.md` — it is the
+Project-2-activated contract that lifts the Project-1 non-goals (torch/models/`eval/`
+become in scope by explicit human instruction). **Until that swap, the non-goals BELOW
+still forbid building `eval/`.** Do not scaffold `eval/` against this Project-1 file.
+
+Spike done and worth not repeating: the PrIMuS MEI→music21→MusicXML bridge that the
+Project-2 CLAUDE.md flags as unverified **works** — 300/300 parse, export, and note-count
+match the shipped `.semantic`. A ~1,885-incipit sample is on disk at
+`data/primus_sample/package_aa/` (gitignored). The spec records the grammar the spike
+corrected (timeSignature-C symbols, keySignature named by major equivalent, gracenote/
+multirest/tie) and a calibration test the sample now enables.
+
+**Two Project 1 bugs still OPEN, `augment.py`/`generate.py` unpatched** (Project 2 stages
+1–2 don't need them; stage 3 is blocked on them): (1) multi-page works exceed OpenCV's
+`SHRT_MAX`, crashing `_apply_geometric` — measured at **4.2% of units**, so skip is
+defensible (see memory `project-1-open-bugs`); (2) `canonical_musicxml()` sits *outside*
+the `try/except EngraverError` in `generate_with_meta`, so one unexportable score aborts a
+whole run — a two-line fix. Also open, unverified: Verovio may render ~2.6× its requested
+dpi (memory `verovio-scale-suspicion`), which could confound the three-engraver thesis and
+also relieve bug 1. `docs/retro/project-1.md` was never written — the one skipped ritual
+step. Deferred: per-unit multi-engraver sampling.
 
 <!-- END MUTABLE STATUS -->
 
