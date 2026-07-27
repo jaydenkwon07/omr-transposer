@@ -22,11 +22,12 @@ Scope is single-staff monophonic, per the Project 2 non-goal.
 """
 from __future__ import annotations
 
-from music21 import bar, chord, clef, converter, key, meter, note, spanner, stream
+from music21 import (bar, base, chord, clef, converter, key, meter, note, pitch,
+                     spanner, stream)
 
 from omrt.datagen.types import MusicXMLStr
 
-__all__ = ["to_symbols"]
+__all__ = ["to_symbols", "symbols_from_score", "parse_score"]
 
 # music21 duration names on the left, PrIMuS's on the right. Anything absent passes
 # through unchanged, so an unmapped duration shows up as itself rather than silently
@@ -51,21 +52,51 @@ _TIME_SYMBOLS = {"common": "C", "cut": "C/"}
 
 def to_symbols(musicxml: MusicXMLStr) -> list[str]:
     """Linearize a MusicXML score. Blank or unparseable input returns ``[]``."""
-    if not musicxml.strip():
-        return []
-    try:
-        score = converter.parse(musicxml, format="musicxml")
-    except Exception:  # noqa: BLE001 — any parse failure is "no symbols", by contract
-        return []
+    score = parse_score(musicxml)
+    return [] if score is None else symbols_from_score(score)
 
+
+def parse_score(musicxml: MusicXMLStr) -> stream.Score | None:
+    """Parse MusicXML to a Score, or ``None`` if it is blank or does not parse.
+
+    A single-part fragment comes back as a Part, so wrap it: everything downstream
+    may then assume a Score. Mirrors ``omrt.symbolic.transpose._parse``, kept separate
+    because seam 4 does not import the transposition layer.
+    """
+    if not musicxml.strip():
+        return None
+    try:
+        parsed = converter.parseData(musicxml, format="musicxml")
+    except Exception:  # noqa: BLE001 — any parse failure is "no symbols", by contract
+        return None
+    if isinstance(parsed, stream.Score):
+        return parsed
+    if isinstance(parsed, stream.Stream):
+        score = stream.Score()
+        score.insert(0, parsed)
+        return score
+    return None
+
+
+def symbols_from_score(score: stream.Score) -> list[str]:
+    """Linearize an already-parsed score.
+
+    Split out from :func:`to_symbols` so ``evaluate`` can normalize spelling on the
+    parsed score without a round trip back through MusicXML text.
+    """
     multirests, absorbed = _multirest_index(score)
 
+    parts: list[stream.Stream[base.Music21Object]] = list(score.getElementsByClass(stream.Part))
     symbols: list[str] = []
-    for part in score.getElementsByClass(stream.Part) or [score]:
+    for part in parts or [score]:
         state: dict[str, str] = {}
-        measures = list(part.getElementsByClass(stream.Measure))
-        for measure in measures or [part]:
-            symbols.extend(_measure_symbols(measure, state, multirests, absorbed))
+        measures: list[stream.Stream[base.Music21Object]] = list(
+            part.getElementsByClass(stream.Measure)
+        )
+        # A fragment with no measures is still a legal score; treat it as one block,
+        # and emit no barline for it since none was notated.
+        for block in measures or [part]:
+            symbols.extend(_block_symbols(block, state, multirests, absorbed))
             if measures:
                 symbols.append("barline")
     return symbols
@@ -82,7 +113,9 @@ def _multirest_index(
     first: dict[int, str] = {}
     absorbed: set[int] = set()
     for span in score.recurse().getElementsByClass(spanner.MultiMeasureRest):
-        rests = span.getSpannedElements()
+        # spannerStorage rather than getSpannedElements(): same elements, and it is
+        # the typed accessor.
+        rests = list(span.spannerStorage.getElementsByClass(note.Rest))
         if not rests:
             continue
         first[id(rests[0])] = f"multirest-{span.numRests}"
@@ -90,15 +123,15 @@ def _multirest_index(
     return first, absorbed
 
 
-def _measure_symbols(
-    measure: stream.Stream[object],
+def _block_symbols(
+    block: stream.Stream[base.Music21Object],
     state: dict[str, str],
     multirests: dict[int, str],
     absorbed: set[int],
 ) -> list[str]:
     """Symbols for one measure. ``state`` carries the last-emitted clef/key/time."""
     symbols: list[str] = []
-    for element in measure.recurse():
+    for element in block.recurse():
         if isinstance(element, bar.Barline):
             continue  # barlines are emitted per measure, not per element
         token = _attribute_token(element, state)
@@ -159,9 +192,9 @@ def _event_symbols(
     return symbols
 
 
-def _pitch_name(pitch: object) -> str:
+def _pitch_name(p: pitch.Pitch) -> str:
     # music21 spells a flat as '-'; PrIMuS spells it 'b'.
-    return str(getattr(pitch, "name", "")).replace("-", "b")
+    return p.name.replace("-", "b")
 
 
 def _duration(element: note.GeneralNote) -> str:

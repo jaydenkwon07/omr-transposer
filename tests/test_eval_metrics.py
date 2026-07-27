@@ -9,7 +9,11 @@ import pytest
 from music21 import clef, expressions, key, meter, note, spanner, stream, tie
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 
-from omrt.eval import levenshtein, to_symbols
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from omrt.eval import Metrics, evaluate, levenshtein, to_symbols
+from helpers import make_score
 
 
 def _xml(score: stream.Score) -> str:
@@ -218,3 +222,80 @@ def test_clef_and_key_repeat_only_when_they_change() -> None:
     assert symbols.count("clef-G2") == 1
     assert symbols.count("keySignature-GM") == 1
     assert symbols.count("keySignature-FM") == 1
+
+
+# --- evaluate: symbol error rate -------------------------------------------------
+
+
+EIGHT = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]
+
+
+def test_identity_is_zero() -> None:
+    score = make_score(EIGHT)
+    metrics = evaluate(score, score)
+    assert metrics.ser == 0.0
+    assert metrics.edits == 0
+
+
+def test_empty_prediction_is_one() -> None:
+    assert evaluate("", make_score(EIGHT)).ser == 1.0
+
+
+def test_both_empty_is_zero() -> None:
+    metrics = evaluate("", "")
+    assert metrics.ser == 0.0
+    assert metrics.ref_len == 0
+
+
+def test_raw_distance_is_symmetric_but_ser_is_not() -> None:
+    short = make_score(["C4", "D4"])
+    long = make_score(EIGHT)
+
+    forward, backward = evaluate(short, long), evaluate(long, short)
+
+    assert forward.edits == backward.edits
+    # SER normalizes by the *truth* length, which differs between the two calls.
+    assert forward.ser != backward.ser
+
+
+def test_three_substitutions_hand_computed() -> None:
+    truth = make_score(EIGHT)
+    predicted = make_score(["C4", "D#4", "E4", "F#4", "G4", "A4", "B-4", "C5"])
+
+    metrics = evaluate(predicted, truth)
+
+    assert metrics.substitutions == 3
+    assert metrics.insertions == 0
+    assert metrics.deletions == 0
+    # clef + key + time + 8 notes + a barline per 4/4 measure.
+    assert metrics.ref_len == 13
+    assert metrics.ser == pytest.approx(3 / 13)
+
+
+def test_spurious_double_accidental_does_not_count() -> None:
+    # normalize_spelling collapses a double accidental that is not diatonic to the key,
+    # so B##4 and C#5 are the same symbol and the model is not punished for either.
+    truth = make_score(["C4", "C#5"])
+    predicted = make_score(["C4", "B##4"])
+
+    assert evaluate(predicted, truth).ser == 0.0
+
+
+def test_metrics_op_counts_sum_to_edits() -> None:
+    metrics = evaluate(make_score(["C4", "D4", "E4"]), make_score(EIGHT))
+    assert metrics.substitutions + metrics.insertions + metrics.deletions == metrics.edits
+
+
+@given(
+    st.lists(
+        st.sampled_from(["C4", "D4", "E4", "F#4", "G4", "A-4", "B4", "C5"]),
+        min_size=1,
+        max_size=6,
+    )
+)
+@settings(max_examples=25, deadline=None)
+def test_self_comparison_is_always_zero(pitches: list[str]) -> None:
+    score = make_score(pitches)
+    metrics = evaluate(score, score)
+    assert metrics.ser == 0.0
+    assert metrics.ser >= 0.0
