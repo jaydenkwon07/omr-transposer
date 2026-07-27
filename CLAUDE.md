@@ -116,33 +116,69 @@ every model. They are the most valuable artifacts in the repo.
 
 ---
 
-## Project 1 — data generator (ACTIVE)
+## Project 1 — data generator (built; carried debt below)
 
-**Seam 1, concrete** (signature unchanged; this is how we honor it):
+Durable facts, kept because regenerating without them repeats old mistakes:
 
-    generate(n: int, config: GenConfig) -> Iterator[tuple[Image, MusicXMLStr]]
+- Labels are MusicXML, normalized via `spelling.normalize_spelling()`. Never a token vocabulary.
+- Every pair reproducible from `(corpus_id, seed, config_hash)`. This is what answers
+  "did the model get worse, or the data?"
+- Variance priority: **engraver** > photometric > geometric > corpus diversity. Three engravers
+  beat a thousand augmentations of one — it is the only reason this generator beats
+  Camera-PrIMuS, which is itself Verovio-with-3-fonts.
+- Verovio SVG has a transparent background. Rasterize with a white background or the image
+  collapses to solid black in grayscale.
+- Determinism holds *within one environment only* — cv2 warp/JPEG differ across versions.
 
-- The label is MusicXML, always — never a token vocabulary (that's per-model, downstream).
-- Labels pass through `spelling.normalize_spelling()` at generation: one score, one canonical
-  enharmonic spelling, so the model is never punished for predicting F# when the label happens
-  to say Gb for identical pixels. This is Transcoda's one-to-many lesson applied early. Full
-  token-level canonicalization waits for Project 3's vocabulary.
-- Every pair MUST be reproducible from `(corpus_id, seed, config_hash)`. Non-negotiable: it is
-  the only thing that answers "did the model get worse, or the data?"
+---
 
-**Variance axes, in priority order:**
+## Project 2 — CRNN + CTC on single staves (ACTIVE)
 
-1. **Engraver** (the neglected, highest-value axis): Verovio, LilyPond, MuseScore CLI, all live
-   at once behind the Project 0 `Renderer` protocol. Record which engraver made each sample.
-   Three engravers beat a thousand augmentations of one.
-2. Photometric: lighting gradient, shadow, blur, JPEG artifact, moiré.
-3. Geometric: perspective, page curl, rotation, crop. **Watch the crop** — cutting a measure off
-   the page while the label still claims it is this project's silent killer.
-4. Semantic: the *corpus* must be diverse (key sig, time sig, meter), not just the images.
+Three seams wake up at once. Projects 0–1 only exercised seam 1.
 
-**Verified render gotcha:** Verovio SVG has a transparent background. Rasterize with
-`background_color='white'` or the image collapses to solid black in grayscale. Confirmed:
-Verovio → cairosvg → PNG renders correct glyphs with a white background.
+**Build order is not negotiable: seam 4, then seam 3, then the model.**
+A buggy metric reports improvement that isn't there, and you will chase it for weeks.
+
+1. **Seam 4 first** — `evaluate()`. Symbol error rate. Degenerate tests: `evaluate(x,x) == 0`
+   exactly, `evaluate(empty,x) == 1` exactly, symmetry if claimed.
+2. **Seam 3 second** — `decode(tokens) -> MusicXML`, and its inverse for training labels.
+   Then the **round-trip ceiling test**: encode every PrIMuS score to tokens, decode back,
+   assert semantic equivalence. The failure count across the corpus IS the model's accuracy
+   ceiling. Know it before training anything.
+3. **Seam 2 last** — the CRNN behind `Model.predict(image) -> list[Token]`.
+
+**Vocabulary: semantic first, agnostic as an ablation.** PrIMuS ships both. Semantic carries
+musical meaning (a D major key signature is one symbol); agnostic is position-only graphics
+(the same key signature is two "sharp" symbols) and needs a real parser in seam 3. Semantic
+closes the loop fastest, which is what validates the seam chain. The agnostic ablation is the
+Project 3 tokenization lesson, one project early and cheap once the harness exists.
+
+**Seam 4 bridge:** PrIMuS ships MEI; `music21` registers a `ConverterMEI` for `.mei`; MusicXML
+falls out. Verify on a real PrIMuS file — registration does not guarantee their MEI subset parses.
+
+**Data plan, three stages:**
+
+1. PrIMuS clean → target ~2% SER. The only project with a published number. Missing it means
+   the implementation is wrong, not the task.
+2. Camera-PrIMuS (same incipits, photo-distorted) → the delta is what noise costs.
+3. Our own Project 1 vocal single-staff units → the first real report card on the generator.
+   **Blocked until the two Project 1 bugs are fixed.**
+
+**Two CTC-specific failure modes:**
+
+- **Width constraint.** CTC needs output frames ≥ label length. Pool too hard in width and dense
+  incipits become mathematically unemittable → inf/NaN loss. Assert the ratio explicitly.
+- **Overfit one batch.** 8 examples, augmentation off, dropout off, train to near-zero loss.
+  ~90 seconds. Separates "architecture is broken" from "data is broken" — otherwise a week of
+  guessing. Write this before the training loop.
+
+**CTC's wall is the point.** It assumes one symbol per frame, monotonic left-to-right. It
+*cannot express a chord*. Hitting that deliberately is what motivates Project 3.
+
+**Test-set discipline, starts now and outlives every model:** split real photos into
+`dev-real` (~50 pages, debug freely) and `test-real` (~50 pages, opened once per project).
+You are a gradient descent process; looking at the same 50 photos daily overfits them through
+your own choices. Annotate `test-real` before training and never add to it from observed failures.
 
 ---
 
@@ -150,62 +186,49 @@ Verovio → cairosvg → PNG renders correct glyphs with a white background.
 
 ## Status
 
-**Current project:** 1 — data generator.
+**Current project:** 2 — CRNN + CTC on single staves.
 
-**What exists:** `symbolic/` (transpose, spelling, instruments, render), the CLI. `datagen/`:
-corpus loader (voice→single-staff, piano→grand-staff units; ADR 0006), `Engraver` protocol
-with **all three engravers live end-to-end** — Verovio (rsvg, white bg), MuseScore 4, and
-LilyPond (ADR 0009) — seeded augment (photometric + geometric with mask-based crop safety,
-ADR 0007), MusicXML labels, `dataset.write_dataset` + manifest, and `generate()` (seam 1).
-`scripts/build_corpus.py` materializes a reproducible, diversity-weighted corpus from the
-music21 core (per-collection caps; `--include-dir` folds in a local grand-staff source),
-writing `CORPUS.json` (music21 version, recipe, per-file sha256) so `corpus_id` has recorded
-provenance. ADRs 0005–0009.
+**What exists:** `symbolic/` (transpose, spelling, instruments, render) + CLI. `datagen/`:
+corpus loader (voice→single-staff, piano→grand-staff units), `Engraver` protocol with all
+three engravers wired (Verovio/rsvg/white-bg, MuseScore 4, LilyPond), seeded augment
+(photometric + geometric, mask-based crop safety), MusicXML labels, `write_dataset` +
+manifest, `generate()`. `scripts/build_corpus.py` builds a diversity-weighted corpus from
+the music21 core with `CORPUS.json` provenance (version, recipe, per-file sha256).
+ADRs 0005–0009.
 
-**What survived from Project 0:** the `Renderer` protocol (now has a raster sibling
-`Engraver`, sharing Verovio init); `spelling.normalize_spelling()` (now also normalizes
-generation labels); every verified `music21` trap in `test_traps.py`.
+**What survived from Project 0:** the `Renderer` protocol (now with raster sibling `Engraver`,
+sharing Verovio init); `spelling.normalize_spelling()` (also normalizes generation labels);
+every verified `music21` trap in `test_traps.py`.
 
-**NEXT SESSION START HERE — Project 2 is designed but not implemented (2026-07-24).**
-We decided to begin Project 2 (CRNN+CTC). Stage A (seam 4, `src/omrt/eval/`) is fully
-designed and the spec is committed at
-`docs/superpowers/specs/2026-07-24-project2-seam4-design.md` — read it first; it is the
-source of truth. Nothing is implemented: still on branch `project-1-datagen`, no code
-written, this file unchanged below the status block.
+**Carried debt from Project 1 — two OPEN bugs, `augment.py`/`generate.py` unpatched.** Both
+surfaced only against a *diverse* corpus; the short uniform Bach chorales never triggered them:
+(1) multi-page works exceed OpenCV's `SHRT_MAX`, crashing `warpAffine`/`remap` in
+`_apply_geometric` — needs a design call, skip vs. downscale; (2) `canonical_musicxml()` sits
+*outside* the `try/except EngraverError` in `generate_with_meta`, so one unexportable score
+(`MusicXMLExportException`) aborts a whole run instead of skipping the unit.
+**Consequence: no end-to-end mixed dataset exists, so the three-engraver thesis has passing
+tests but no generated set demonstrating it.** Project 2 stages 1–2 (PrIMuS, Camera-PrIMuS)
+are unblocked and need no generator; **stage 3 is blocked until both bugs are fixed.**
+Also deferred: per-unit multi-engraver sampling.
 
-To implement, the spec's first two steps are: (1) `git switch -c project-2-crnn`;
-(2) install `~/Downloads/CLAUDE(1).md` as this repo's `CLAUDE.md` — it is the
-Project-2-activated contract that lifts the Project-1 non-goals (torch/models/`eval/`
-become in scope by explicit human instruction). **Until that swap, the non-goals BELOW
-still forbid building `eval/`.** Do not scaffold `eval/` against this Project-1 file.
-
-Spike done and worth not repeating: the PrIMuS MEI→music21→MusicXML bridge that the
-Project-2 CLAUDE.md flags as unverified **works** — 300/300 parse, export, and note-count
-match the shipped `.semantic`. A ~1,885-incipit sample is on disk at
-`data/primus_sample/package_aa/` (gitignored). The spec records the grammar the spike
-corrected (timeSignature-C symbols, keySignature named by major equivalent, gracenote/
-multirest/tie) and a calibration test the sample now enables.
-
-**Two Project 1 bugs still OPEN, `augment.py`/`generate.py` unpatched** (Project 2 stages
-1–2 don't need them; stage 3 is blocked on them): (1) multi-page works exceed OpenCV's
-`SHRT_MAX`, crashing `_apply_geometric` — measured at **4.2% of units**, so skip is
-defensible (see memory `project-1-open-bugs`); (2) `canonical_musicxml()` sits *outside*
-the `try/except EngraverError` in `generate_with_meta`, so one unexportable score aborts a
-whole run — a two-line fix. Also open, unverified: Verovio may render ~2.6× its requested
-dpi (memory `verovio-scale-suspicion`), which could confound the three-engraver thesis and
-also relieve bug 1. `docs/retro/project-1.md` was never written — the one skipped ritual
-step. Deferred: per-unit multi-engraver sampling.
+**Open question I'm stuck on:** none yet — Project 2 begins with seam 4.
 
 <!-- END MUTABLE STATUS -->
 
 ---
 
-## Non-goals (Project 1)
+## Non-goals (Project 2)
 
-- **No model. No torch. No training dataloader** — the dataloader is Project 2. Do not
-  scaffold `models/` or `eval/`; empty dirs with `.gitkeep` are fine, stub classes are not.
-- **Do not tokenize labels.** MusicXML is the label; output vocabularies come later.
-- **Single-staff and piano grand staff only for now.** No full multi-instrument scores yet.
+Lifted from Project 1, deliberately, by human instruction: torch, models, and the training
+dataloader are now in scope. Tokenized labels are in scope *inside* `decode/` only — seam 1
+still emits MusicXML and nothing else.
+
+- **Single-staff monophonic only.** No grand staff, no polyphony, no chords. CTC structurally
+  cannot express them; attempting it is the Project 3 motivation, not a Project 2 task.
+- **Do not reimplement from `calvozaragoza/tf-deep-omr`.** Build from the 2018 paper. The
+  appendix grammars are what seam 3 needs. Reading the repo defeats the project.
+- **Do not tune hyperparameters before the ceiling and canary tests pass.** A model that can't
+  overfit 8 examples is broken, not undertrained.
 - **Do not build a web UI, API, or mobile app.**
 - No handwritten manuscript support, ever. Printed music only.
 - No audio, no MIDI playback, no synthesis.
