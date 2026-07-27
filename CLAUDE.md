@@ -211,16 +211,21 @@ tests but no generated set demonstrating it.** Project 2 stages 1–2 (PrIMuS, C
 are unblocked and need no generator; **stage 3 is blocked until both bugs are fixed.**
 Also deferred: per-unit multi-engraver sampling.
 
-**Seam 4 bridge: VERIFIED (2026-07-24), not still open.** The MEI→music21→MusicXML spike ran
-300/300 parse, export, and note-count match against the shipped `.semantic`. A ~1,885-incipit
-sample sits at `data/primus_sample/package_aa/` (gitignored; re-fetch command in the spec).
+**Stage A (seam 4) is DONE.** `src/omrt/eval/` — `symbols.py` (PrIMuS-mirroring grammar),
+`editdistance.py`, `metrics.py`/`evaluate()` — 33 tests, full suite 153 green, mypy strict
+clean. Design + measured results: `docs/superpowers/specs/2026-07-24-project2-seam4-design.md`.
 
-**Stage A in progress:** seam 4 design is committed at
-`docs/superpowers/specs/2026-07-24-project2-seam4-design.md` — the source of truth for
-`src/omrt/eval/`, including the PrIMuS grammar the spike corrected (timeSignature-C symbols,
-keySignature named by major equivalent, gracenote/multirest/tie) and the calibration test.
+**Seam 4 bridge: the MEI route is LOSSY. Do not trust the earlier "verified" note.**
+Calibration against the shipped `.semantic` (300 incipits, seed 0) reads **18.8% SER**, and
+essentially all of it is music21's MEI parser, not our grammar: it ignores key-signature
+accidentals (765 divergent ops — `Bb` read as `B`), drops `meter.sym` so every
+`timeSignature-C` disappears (~101), and drops `<multiRest>` (92 + knock-on). The spike's
+"300/300 note-count match" only ever showed the notes were *present*. A ~1,885-incipit sample
+is at `data/primus_sample/package_aa/` (gitignored; re-fetch command in the spec).
 
-**Open question I'm stuck on:** none yet — Project 2 begins with seam 4.
+**Open question, live:** whether to repair the MEI bridge or bypass it — PrIMuS ships
+`.semantic`, so Stage B's `decode(tokens) -> MusicXML` reaches MusicXML without MEI at all,
+and the round-trip ceiling test then measures that path directly. Decide before Stage B.
 
 <!-- END MUTABLE STATUS -->
 
