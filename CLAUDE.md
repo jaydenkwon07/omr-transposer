@@ -223,9 +223,13 @@ accidentals (765 divergent ops — `Bb` read as `B`), drops `meter.sym` so every
 "300/300 note-count match" only ever showed the notes were *present*. A ~1,885-incipit sample
 is at `data/primus_sample/package_aa/` (gitignored; re-fetch command in the spec).
 
-**Open question, live:** whether to repair the MEI bridge or bypass it — PrIMuS ships
-`.semantic`, so Stage B's `decode(tokens) -> MusicXML` reaches MusicXML without MEI at all,
-and the round-trip ceiling test then measures that path directly. Decide before Stage B.
+**Settled (ADR 0010): bypass the MEI route, do not repair it.** PrIMuS `.semantic` is already
+the token vocabulary; Stage B's `decode(tokens) -> MusicXML` reaches MusicXML with no MEI
+involved, and the round-trip ceiling test measures that path directly. Consequence for Stage B:
+seam 3 must decode the *full* `.semantic` grammar — there is no fallback route to MusicXML.
+The 18.8% figure describes a route we no longer take; do not quote it as our metric's offset.
+
+**Open question I'm stuck on:** none — next up is Stage B (seam 3), design gate not yet opened.
 
 <!-- END MUTABLE STATUS -->
 
