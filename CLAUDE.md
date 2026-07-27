@@ -211,6 +211,15 @@ tests but no generated set demonstrating it.** Project 2 stages 1–2 (PrIMuS, C
 are unblocked and need no generator; **stage 3 is blocked until both bugs are fixed.**
 Also deferred: per-unit multi-engraver sampling.
 
+**Seam 4 bridge: VERIFIED (2026-07-24), not still open.** The MEI→music21→MusicXML spike ran
+300/300 parse, export, and note-count match against the shipped `.semantic`. A ~1,885-incipit
+sample sits at `data/primus_sample/package_aa/` (gitignored; re-fetch command in the spec).
+
+**Stage A in progress:** seam 4 design is committed at
+`docs/superpowers/specs/2026-07-24-project2-seam4-design.md` — the source of truth for
+`src/omrt/eval/`, including the PrIMuS grammar the spike corrected (timeSignature-C symbols,
+keySignature named by major equivalent, gracenote/multirest/tie) and the calibration test.
+
 **Open question I'm stuck on:** none yet — Project 2 begins with seam 4.
 
 <!-- END MUTABLE STATUS -->
