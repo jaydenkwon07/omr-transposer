@@ -6,5 +6,6 @@ Project 2 scope is symbol error rate only; OMR-NED and TEDn arrive in Project 3.
 """
 
 from omrt.eval.editdistance import EditOps, levenshtein
+from omrt.eval.symbols import to_symbols
 
-__all__ = ["EditOps", "levenshtein"]
+__all__ = ["EditOps", "levenshtein", "to_symbols"]
