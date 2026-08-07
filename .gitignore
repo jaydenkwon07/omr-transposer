@@ -7,3 +7,4 @@ __pycache__/
 .hypothesis/
 *.egg-info/
 .DS_Store
+CLAUDE.md
