@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from music21 import duration, note, stream
+from music21 import base, clef, duration, key, meter, note, stream
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 
 from omrt.datagen.types import MusicXMLStr
@@ -26,6 +26,16 @@ _DURATION_TYPES = {
     "thirty_second": "32nd",
     "sixty_fourth": "64th",
 }
+
+# PrIMuS names the *signature* by its major tonic. Inverse of
+# eval/symbols._MAJOR_TONIC_BY_SHARPS; the dict-inverse test asserts they match.
+_SHARPS_BY_MAJOR_TONIC = {
+    "Cb": -7, "Gb": -6, "Db": -5, "Ab": -4, "Eb": -3, "Bb": -2, "F": -1,
+    "C": 0,
+    "G": 1, "D": 2, "A": 3, "E": 4, "B": 5, "F#": 6, "C#": 7,
+}
+# PrIMuS symbol -> music21 TimeSignature.symbol. Inverse of eval/symbols._TIME_SYMBOLS.
+_TIME_SYMBOLS = {"C": "common", "C/": "cut"}
 
 _PITCH_RE = re.compile(r"^([A-G])(b+|#+)?(-?\d+)$")
 
@@ -68,6 +78,42 @@ def _duration(body: str) -> tuple[str, duration.Duration] | None:
     return pitch_str, dur
 
 
+def _attribute(prefix: str, body: str) -> base.Music21Object | None:
+    """Parse clef, keySignature, and timeSignature attribute tokens."""
+    if prefix == "clef":
+        m = re.match(r"^([A-G])(-?\d+)$", body)
+        if m is None:
+            return None
+        c = clef.Clef()
+        c.sign, c.line = m.group(1), int(m.group(2))
+        return c
+    if prefix == "keySignature":
+        tonic = body[:-1] if body.endswith("M") else body
+        sharps = _SHARPS_BY_MAJOR_TONIC.get(tonic)
+        return None if sharps is None else key.KeySignature(sharps)
+    if prefix == "timeSignature":
+        symbol = _TIME_SYMBOLS.get(body)
+        if symbol is not None:
+            ts = meter.TimeSignature()
+            # Set numerator/denominator first, then symbol (order matters in music21).
+            if symbol == "common":
+                ts.numerator = 4
+                ts.denominator = 4
+            else:  # "cut"
+                ts.numerator = 2
+                ts.denominator = 2
+            ts.symbol = symbol
+            return ts
+        else:
+            ts = meter.TimeSignature()
+            try:
+                ts.ratioString = body
+            except Exception:  # noqa: BLE001 — malformed ratio -> skip token
+                return None
+            return ts
+    return None
+
+
 def _note(body: str) -> note.Note | None:
     parsed = _duration(body)
     if parsed is None:
@@ -94,8 +140,11 @@ def _rest(body: str) -> note.Rest | None:
     return r
 
 
-def _event(tok: Token) -> note.GeneralNote | None:
+def _event(tok: Token) -> base.Music21Object | None:
     prefix, _, body = tok.partition("-")
+    attr = _attribute(prefix, body)
+    if attr is not None:
+        return attr
     if prefix == "note":
         return _note(body)
     if prefix == "rest":

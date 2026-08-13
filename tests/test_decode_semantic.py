@@ -65,3 +65,33 @@ def test_stream_not_ending_in_barline_gains_one_barline():
 def test_empty_stream_round_trips_to_empty_list():
     # No empty measure is appended, so there is nothing for to_symbols to barline.
     assert _round_trip([]) == []
+
+
+def test_clef_key_time_round_trip():
+    # Ends in barline so the round trip is exact identity (see Task 3 semantics).
+    tokens = ["clef-G2", "keySignature-BbM", "timeSignature-C/", "note-D5_half", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_all_key_signatures_minus7_to_plus7_round_trip():
+    for tonic in ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C",
+                  "G", "D", "A", "E", "B", "F#", "C#"]:
+        tok = f"keySignature-{tonic}M"
+        assert _round_trip(["clef-G2", tok, "note-C4_quarter"])[1] == tok
+
+
+def test_common_and_cut_and_numeric_time_signatures():
+    for tok in ["timeSignature-C", "timeSignature-C/", "timeSignature-6/8", "timeSignature-12/8"]:
+        assert _round_trip(["clef-G2", tok, "note-C4_quarter"])[1] == tok
+
+
+def test_mid_stream_clef_change_round_trips():
+    tokens = ["clef-F4", "note-G3_eighth", "barline", "clef-C4", "note-C4_eighth", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_no_phantom_clef_or_meter_on_attribute_less_stream():
+    # A stream with no clef/key/time must NOT gain any on export.
+    result = _round_trip(["note-C4_quarter"])
+    assert not any(t.startswith("clef-") or t.startswith("timeSignature-")
+                   or t.startswith("keySignature-") for t in result)
