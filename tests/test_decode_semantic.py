@@ -95,3 +95,23 @@ def test_no_phantom_clef_or_meter_on_attribute_less_stream():
     result = _round_trip(["note-C4_quarter"])
     assert not any(t.startswith("clef-") or t.startswith("timeSignature-")
                    or t.startswith("keySignature-") for t in result)
+
+
+def test_gracenote_round_trips():
+    tokens = ["clef-G2", "gracenote-C4_eighth", "note-Bb3_quarter.", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_multirest_round_trips():
+    tokens = ["clef-C1", "multirest-25", "barline", "note-F5_quarter.", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_fermata_round_trips():
+    tokens = ["clef-G2", "note-C4_quarter_fermata", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_rest_fermata_round_trips():
+    tokens = ["clef-G2", "rest-quarter_fermata", "barline"]
+    assert _round_trip(tokens) == tokens

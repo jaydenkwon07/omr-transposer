@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from music21 import base, clef, duration, key, meter, note, stream
+from music21 import base, clef, duration, expressions, key, meter, note, spanner, stream
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 
 from omrt.datagen.types import MusicXMLStr
@@ -37,7 +37,7 @@ _SHARPS_BY_MAJOR_TONIC = {
 # PrIMuS symbol -> music21 TimeSignature.symbol. Inverse of eval/symbols._TIME_SYMBOLS.
 _TIME_SYMBOLS = {"C": "common", "C/": "cut"}
 
-_PITCH_RE = re.compile(r"^([A-G])(b+|#+)?(-?\d+)$")
+_NOTE_RE = re.compile(r"^([A-G])(b+|#+)?(-?\d+)_(.+)$")
 
 
 def parse_semantic(line: str) -> list[Token]:
@@ -50,32 +50,22 @@ def decode(tokens: list[Token]) -> MusicXMLStr:
     return _export(_build_score(tokens))
 
 
-def _duration(body: str) -> tuple[str, duration.Duration] | None:
-    """Parse `<pitch?>_<durname>[.][_fermata]`. Returns (pitch_str, Duration).
-
-    Fermata handling is added in Task 5; here the `_fermata` segment, if present,
-    is simply not part of the duration name.
-
-    Handles both note format `<pitch>_<durname>[.]` and rest format `<durname>[.]`.
-    """
-    idx = body.find("_")
-    if idx < 0:
-        # Rest format: no pitch, just duration name (and optional dots)
-        pitch_str = ""
-        dur_field = body
-    else:
-        # Note format: pitch_<durname>[.]
-        pitch_str = body[:idx]
-        dur_field = body[idx + 1 :]
-    dots = len(dur_field) - len(dur_field.rstrip("."))
-    name = dur_field[: len(dur_field) - dots]
+def _duration(field: str) -> tuple[duration.Duration, bool] | None:
+    """Parse a duration FIELD: `<name>[.]` with an optional trailing `_fermata`.
+    `name` may itself contain an underscore (`thirty_second`), so never split on
+    interior underscores. Returns (Duration, has_fermata)."""
+    fermata = field.endswith("_fermata")
+    if fermata:
+        field = field[: -len("_fermata")]
+    dots = len(field) - len(field.rstrip("."))
+    name = field[: len(field) - dots]
     type_name = _DURATION_TYPES.get(name, name)
     try:
         dur = duration.Duration(type=type_name)
     except Exception:  # noqa: BLE001 — unknown duration name -> skip token
         return None
     dur.dots = dots
-    return pitch_str, dur
+    return dur, fermata
 
 
 def _attribute(prefix: str, body: str) -> base.Music21Object | None:
@@ -115,45 +105,91 @@ def _attribute(prefix: str, body: str) -> base.Music21Object | None:
 
 
 def _note(body: str) -> note.Note | None:
-    parsed = _duration(body)
-    if parsed is None:
-        return None
-    pitch_str, dur = parsed
-    m = _PITCH_RE.match(pitch_str)
+    m = _NOTE_RE.match(body)
     if m is None:
         return None
-    step, accidental, octave = m.group(1), m.group(2) or "", m.group(3)
+    step, accidental, octave, field = m.group(1), m.group(2) or "", m.group(3), m.group(4)
+    parsed = _duration(field)
+    if parsed is None:
+        return None
+    dur, fermata = parsed
     # PrIMuS spells a flat 'b'; music21 spells it '-'. '#' is shared.
     alter = accidental.replace("b", "-")
     n = note.Note(f"{step}{alter}{octave}")
     n.duration = dur
+    if fermata:
+        n.expressions.append(expressions.Fermata())  # type: ignore[no-untyped-call]
     return n
 
 
 def _rest(body: str) -> note.Rest | None:
+    # A rest body is the duration field only (no pitch).
     parsed = _duration(body)
     if parsed is None:
         return None
-    _pitch_str, dur = parsed
+    dur, fermata = parsed
     r = note.Rest()
     r.duration = dur
+    if fermata:
+        r.expressions.append(expressions.Fermata())  # type: ignore[no-untyped-call]
     return r
 
 
-def _event(tok: Token) -> base.Music21Object | None:
+def _multirest(body: str) -> tuple[list[note.Rest], spanner.Spanner | None]:
+    """`multirest-N` -> N whole-rest events, all in the *same* measure, wrapped by
+    one `MultiMeasureRest` spanner.
+
+    music21's own MusicXML round trip forces this shape. The brief's original design
+    put a single `Rest` in the measure with `numRests` set directly on the spanner:
+    that exports fine (`GeneralObjectExporter` reads `numRests` straight off the
+    spanner), but on *reimport* `xmlToM21.PartParser.applyMultiMeasureRest` doesn't
+    trust the `<measure-style>` count as given — it decrements a counter seeded from
+    that count once per `<note><rest/></note>` it actually parses, and only inserts
+    the spanner once the counter hits zero. A single rest reimports as a bare
+    `rest-whole`, never becoming a spanner at all. Giving the spanner N real Rest
+    events (still confined to one `stream.Measure`, so still one PrIMuS "barline"
+    worth of measure) produces N `<note>` elements under one `<measure-style>` tag,
+    which is also the same shape music21's own MusicXML fixtures use for a
+    multi-measure rest. `eval/symbols._multirest_index` already anticipates exactly
+    this: it emits one token for the spanner's first rest and silently absorbs the
+    rest.
+    """
+    try:
+        count = int(body)
+    except ValueError:
+        return [], None
+    if count < 1:
+        return [], None
+    rests = [note.Rest(type="whole") for _ in range(count)]
+    mmr = spanner.MultiMeasureRest(*rests)  # type: ignore[no-untyped-call]
+    mmr.numRests = count
+    return rests, mmr
+
+
+def _event(tok: Token) -> tuple[list[base.Music21Object], spanner.Spanner | None]:
     prefix, _, body = tok.partition("-")
     attr = _attribute(prefix, body)
     if attr is not None:
-        return attr
+        return [attr], None
     if prefix == "note":
-        return _note(body)
+        n = _note(body)
+        return ([n] if n is not None else []), None
+    if prefix == "gracenote":
+        n = _note(body)
+        return ([n.getGrace()] if n is not None else []), None  # type: ignore[no-untyped-call]
     if prefix == "rest":
-        return _rest(body)
-    return None
+        r = _rest(body)
+        return ([r] if r is not None else []), None
+    if prefix == "multirest":
+        rests, mmr = _multirest(body)
+        events: list[base.Music21Object] = list(rests)
+        return events, mmr
+    return [], None
 
 
 def _build_score(tokens: list[Token]) -> stream.Score:
     part: stream.Part = stream.Part()  # type: ignore[no-untyped-call]
+    spanners: list[spanner.Spanner] = []
     measures: list[stream.Measure] = []
     current = stream.Measure()
     for tok in tokens:
@@ -162,14 +198,18 @@ def _build_score(tokens: list[Token]) -> stream.Score:
                 measures.append(current)
             current = stream.Measure()
             continue
-        event = _event(tok)
-        if event is not None:
+        events, span = _event(tok)
+        for event in events:
             current.append(event)  # type: ignore[no-untyped-call]
+        if span is not None:
+            spanners.append(span)
     if current.elements:  # trailing partial measure, only if it has content
         measures.append(current)
     for number, measure in enumerate(measures, start=1):
         measure.number = number
         part.append(measure)  # type: ignore[no-untyped-call]
+    for span in spanners:
+        part.insert(0, span)
     score: stream.Score = stream.Score()
     score.insert(0, part)
     return score
