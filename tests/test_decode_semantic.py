@@ -115,3 +115,21 @@ def test_fermata_round_trips():
 def test_rest_fermata_round_trips():
     tokens = ["clef-G2", "rest-quarter_fermata", "barline"]
     assert _round_trip(tokens) == tokens
+
+
+def test_two_note_tie_round_trips():
+    tokens = ["clef-G2", "note-F5_quarter.", "tie", "note-F5_quarter", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_three_note_tie_chain_round_trips():
+    tokens = ["clef-G2", "note-F5_quarter", "tie", "note-F5_quarter", "tie", "note-F5_quarter", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_tie_sets_start_continue_stop():
+    from omrt.decode.semantic import decode
+    from music21 import converter
+    tokens = ["note-F5_quarter", "tie", "note-F5_quarter", "tie", "note-F5_quarter"]
+    notes = list(converter.parseData(decode(tokens), format="musicxml").recurse().notes)
+    assert [n.tie.type for n in notes] == ["start", "continue", "stop"]

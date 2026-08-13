@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from music21 import base, clef, duration, expressions, key, meter, note, spanner, stream
+from music21 import tie as m21tie
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 
 from omrt.datagen.types import MusicXMLStr
@@ -192,17 +193,25 @@ def _build_score(tokens: list[Token]) -> stream.Score:
     spanners: list[spanner.Spanner] = []
     measures: list[stream.Measure] = []
     current = stream.Measure()
+    last_note: note.Note | None = None
     for tok in tokens:
         if tok == "barline":
             if current.elements:
                 measures.append(current)
             current = stream.Measure()
             continue
+        if tok == "tie":
+            _apply_tie(last_note)
+            continue
         events, span = _event(tok)
         for event in events:
+            if isinstance(event, note.Note) and last_note is not None and last_note.tie is not None:
+                event.tie = m21tie.Tie("stop")  # type: ignore[no-untyped-call]
             current.append(event)  # type: ignore[no-untyped-call]
         if span is not None:
             spanners.append(span)
+        note_events = [e for e in events if isinstance(e, note.Note)]
+        last_note = note_events[-1] if note_events else None
     if current.elements:  # trailing partial measure, only if it has content
         measures.append(current)
     for number, measure in enumerate(measures, start=1):
@@ -213,6 +222,14 @@ def _build_score(tokens: list[Token]) -> stream.Score:
     score: stream.Score = stream.Score()
     score.insert(0, part)
     return score
+
+
+def _apply_tie(last_note: note.Note | None) -> None:
+    if last_note is None:
+        return
+    current = last_note.tie.type if last_note.tie is not None else None
+    promoted = {None: "start", "stop": "continue", "start": "continue", "continue": "continue"}
+    last_note.tie = m21tie.Tie(promoted[current])  # type: ignore[no-untyped-call]
 
 
 def _export(score: stream.Score) -> MusicXMLStr:
