@@ -47,3 +47,21 @@ def test_dotted_and_mapped_durations_round_trip():
 
 def test_rest_round_trips():
     assert _round_trip(["rest-quarter", "rest-eighth."]) == ["rest-quarter", "rest-eighth.", "barline"]
+
+
+def test_barline_terminated_stream_round_trips_exactly():
+    # Ends in barline: the empty measure after the final barline must be dropped,
+    # so no phantom trailing barline appears.
+    tokens = ["note-C4_quarter", "barline", "note-D4_quarter", "barline"]
+    assert _round_trip(tokens) == tokens
+
+
+def test_stream_not_ending_in_barline_gains_one_barline():
+    # Documents the ceiling-loss class: the encoder always closes the last measure.
+    tokens = ["note-C4_quarter", "barline", "note-D4_quarter"]
+    assert _round_trip(tokens) == tokens + ["barline"]
+
+
+def test_empty_stream_round_trips_to_empty_list():
+    # No empty measure is appended, so there is nothing for to_symbols to barline.
+    assert _round_trip([]) == []

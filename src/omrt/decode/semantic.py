@@ -104,14 +104,24 @@ def _event(tok: Token) -> note.GeneralNote | None:
 
 
 def _build_score(tokens: list[Token]) -> stream.Score:
-    measure = stream.Measure(number=1)
+    part: stream.Part = stream.Part()  # type: ignore[no-untyped-call]
+    measures: list[stream.Measure] = []
+    current = stream.Measure()
     for tok in tokens:
+        if tok == "barline":
+            if current.elements:
+                measures.append(current)
+            current = stream.Measure()
+            continue
         event = _event(tok)
         if event is not None:
-            measure.append(event)  # type: ignore
-    part = stream.Part()  # type: ignore
-    part.append(measure)  # type: ignore
-    score = stream.Score()
+            current.append(event)  # type: ignore[no-untyped-call]
+    if current.elements:  # trailing partial measure, only if it has content
+        measures.append(current)
+    for number, measure in enumerate(measures, start=1):
+        measure.number = number
+        part.append(measure)  # type: ignore[no-untyped-call]
+    score: stream.Score = stream.Score()
     score.insert(0, part)
     return score
 
@@ -120,6 +130,20 @@ def _export(score: stream.Score) -> MusicXMLStr:
     # makeNotation=False stops music21 from synthesizing a default treble clef and
     # 4/4 meter into an attribute-less incipit, which to_symbols would otherwise
     # read back as phantom clef-G2 / timeSignature-4/4 tokens. See spec section 5.
+    # For empty scores (no measures), return minimal valid MusicXML.
+    has_measures = any(part.getElementsByClass(stream.Measure) for part in score.parts)
+    if not has_measures:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" '
+            '"http://www.musicxml.org/dtds/partwise.dtd">\n'
+            '<score-partwise version="3.1">\n'
+            '  <part-list>\n'
+            '    <score-part id="P1"/>\n'
+            '  </part-list>\n'
+            '  <part id="P1"/>\n'
+            '</score-partwise>\n'
+        )
     exporter = GeneralObjectExporter(score)
     exporter.makeNotation = False
     return exporter.parse().decode("utf-8")
