@@ -133,3 +133,33 @@ def test_tie_sets_start_continue_stop():
     tokens = ["note-F5_quarter", "tie", "note-F5_quarter", "tie", "note-F5_quarter"]
     notes = list(converter.parseData(decode(tokens), format="musicxml").recurse().notes)
     assert [n.tie.type for n in notes] == ["start", "continue", "stop"]
+
+
+def test_unknown_token_is_skipped_not_raised():
+    assert _round_trip(["clef-G2", "blah", "note-C4_quarter", "barline"]) == [
+        "clef-G2", "note-C4_quarter", "barline",
+    ]
+
+
+def test_malformed_pitch_is_skipped():
+    assert _round_trip(["clef-G2", "note-Z9_eighth", "note-C4_quarter", "barline"]) == [
+        "clef-G2", "note-C4_quarter", "barline",
+    ]
+
+
+def test_leading_tie_is_dropped():
+    assert _round_trip(["tie", "note-C4_quarter", "barline"]) == ["note-C4_quarter", "barline"]
+
+
+def test_empty_round_trips_to_empty_list():
+    assert _round_trip([]) == []
+
+
+def test_all_unknown_returns_empty_musicxml():
+    assert _round_trip(["blah", "xyz"]) == []
+
+
+def test_tie_across_barline_round_trips():
+    # Locks the invariant that last_note is NOT reset at a barline (Task 6).
+    tokens = ["note-F5_quarter", "tie", "barline", "note-F5_quarter", "barline"]
+    assert _round_trip(tokens) == tokens
