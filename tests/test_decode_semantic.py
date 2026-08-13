@@ -1,3 +1,5 @@
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from music21 import converter, stream
 
 from omrt.decode.semantic import Token, decode, parse_semantic
@@ -178,3 +180,30 @@ def test_decode_dicts_are_exact_inverses_of_symbols():
     assert semantic._TIME_SYMBOLS == {
         v: k for k, v in symbols._TIME_SYMBOLS.items()
     }
+
+
+_STEPS = st.sampled_from(["C", "D", "E", "F", "G", "A", "B"])
+_ACC = st.sampled_from(["", "b", "#"])
+_OCT = st.integers(min_value=2, max_value=6).map(str)
+_DUR = st.sampled_from(["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second"])
+_DOT = st.sampled_from(["", "."])
+
+
+@st.composite
+def _note_token(draw):
+    return f"note-{draw(_STEPS)}{draw(_ACC)}{draw(_OCT)}_{draw(_DUR)}{draw(_DOT)}"
+
+
+@st.composite
+def _incipit(draw):
+    clef = draw(st.sampled_from(["clef-G2", "clef-F4", "clef-C1"]))
+    ks = draw(st.sampled_from(["keySignature-CM", "keySignature-GM", "keySignature-BbM"]))
+    ts = draw(st.sampled_from(["timeSignature-C", "timeSignature-3/4", "timeSignature-6/8"]))
+    body = draw(st.lists(_note_token(), min_size=1, max_size=8))
+    return [clef, ks, ts, *body, "barline"]
+
+
+@settings(max_examples=200, deadline=None)
+@given(_incipit())
+def test_valid_incipits_round_trip(tokens):
+    assert _round_trip(tokens) == tokens
