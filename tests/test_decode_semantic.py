@@ -163,3 +163,18 @@ def test_tie_across_barline_round_trips():
     # Locks the invariant that last_note is NOT reset at a barline (Task 6).
     tokens = ["note-F5_quarter", "tie", "barline", "note-F5_quarter", "barline"]
     assert _round_trip(tokens) == tokens
+
+
+def test_decode_dicts_are_exact_inverses_of_symbols():
+    from omrt.eval import symbols
+    from omrt.decode import semantic
+
+    assert semantic._SHARPS_BY_MAJOR_TONIC == {
+        v: k for k, v in symbols._MAJOR_TONIC_BY_SHARPS.items()
+    }
+    assert semantic._DURATION_TYPES == {
+        v: k for k, v in symbols._DURATION_NAMES.items()
+    }
+    assert semantic._TIME_SYMBOLS == {
+        v: k for k, v in symbols._TIME_SYMBOLS.items()
+    }
