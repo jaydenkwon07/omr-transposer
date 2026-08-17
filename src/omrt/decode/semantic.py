@@ -23,6 +23,7 @@ Token = str
 # a test asserts they are exact inverses so the two directions cannot drift.
 _DURATION_TYPES = {
     "double_whole": "breve",
+    "quadruple_whole": "longa",
     "sixteenth": "16th",
     "thirty_second": "32nd",
     "sixty_fourth": "64th",

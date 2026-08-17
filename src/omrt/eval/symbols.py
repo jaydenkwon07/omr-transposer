@@ -34,6 +34,7 @@ __all__ = ["to_symbols", "symbols_from_score", "parse_score"]
 # becoming a wrong-but-plausible token.
 _DURATION_NAMES = {
     "breve": "double_whole",
+    "longa": "quadruple_whole",
     "16th": "sixteenth",
     "32nd": "thirty_second",
     "64th": "sixty_fourth",
