@@ -37,6 +37,22 @@ def test_select_device_falls_back_to_cpu():
     assert select_device("cpu").type == "cpu"
 
 
+def test_select_device_never_auto_selects_mps():
+    assert select_device(None).type in ("cuda", "cpu")
+
+
+def test_train_raises_on_empty_train_ids(tmp_path):
+    cfg = TrainConfig(
+        root=_SAMPLE,
+        out_dir=str(tmp_path),
+        device="cpu",
+        train_ids=[],
+        val_ids=[],
+    )
+    with pytest.raises(ValueError):
+        train(cfg)
+
+
 @pytest.mark.skipif(not list_incipit_ids(_SAMPLE), reason="PrIMuS sample absent")
 def test_train_smoke_runs_one_step_and_checkpoints(tmp_path):
     cfg = TrainConfig(

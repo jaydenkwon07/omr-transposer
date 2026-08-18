@@ -30,13 +30,16 @@ class TrainConfig:
 
 
 def select_device(override: str | None) -> torch.device:
-    """cuda -> mps -> cpu, unless ``override`` is given, in which case it always wins."""
+    """cuda -> cpu, unless ``override`` is given, in which case it always wins.
+
+    mps is deliberately never auto-selected: aten::_ctc_loss has no MPS kernel, so
+    training would crash with NotImplementedError. Pass --device mps explicitly if
+    you want to force it anyway.
+    """
     if override:
         return torch.device(override)
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
     return torch.device("cpu")
 
 
@@ -73,6 +76,8 @@ def _run_loop(
     start_best: float = float("inf"),
 ) -> dict[str, object]:
     ds = PrimusDataset(cfg.root, cfg.train_ids, vocab)
+    if len(ds) == 0:
+        raise ValueError("no training incipits; check cfg.train_ids / --root")
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=True, collate_fn=collate_fn)
     loss_fn = torch.nn.CTCLoss(blank=0, zero_infinity=True)
 
@@ -89,6 +94,9 @@ def _run_loop(
             for images, targets, input_lengths, target_lengths in loader:
                 model.train()
                 images = images.to(device)
+                targets = targets.to(device)
+                input_lengths = input_lengths.to(device)
+                target_lengths = target_lengths.to(device)
                 opt.zero_grad()
                 out = model(images)
                 loss = loss_fn(out, targets, input_lengths, target_lengths)
@@ -143,7 +151,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train the seam-2 CRNN+CTC model on PrIMuS.")
     parser.add_argument("--root", required=True, help="PrIMuS incipit tree root")
     parser.add_argument("--out-dir", required=True, help="checkpoint/log output directory")
-    parser.add_argument("--device", default=None, help="override device (else cuda->mps->cpu)")
+    parser.add_argument("--device", default=None, help="override device (else cuda->cpu)")
     parser.add_argument("--max-steps", type=int, default=100_000)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--val-every", type=int, default=1000)
