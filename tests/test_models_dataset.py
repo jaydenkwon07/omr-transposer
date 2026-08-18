@@ -5,7 +5,13 @@ pytest.importorskip("torch")
 
 import torch
 
-from omrt.models.dataset import PrimusDataset, iter_samples, list_incipit_ids, preprocess
+from omrt.models.dataset import (
+    PrimusDataset,
+    collate_fn,
+    iter_samples,
+    list_incipit_ids,
+    preprocess,
+)
 from omrt.models.vocab import Vocabulary
 
 _SAMPLE = "data/primus_sample/package_aa"
@@ -43,3 +49,13 @@ def test_dataset_item_satisfies_width_constraint():
         assert image.shape[1] == 128
         assert image.shape[2] // 4 >= target.shape[0]  # W/4 >= L
         assert target.dtype == torch.int64
+
+
+def test_collate_pads_width_and_reports_lengths():
+    a = (torch.ones(1, 128, 40), torch.tensor([1, 2, 3], dtype=torch.int64))
+    b = (torch.ones(1, 128, 80), torch.tensor([4, 5], dtype=torch.int64))
+    images, targets, input_lengths, target_lengths = collate_fn([a, b])
+    assert images.shape == (2, 1, 128, 80)  # padded to max width
+    assert list(target_lengths) == [3, 2]
+    assert list(input_lengths) == [10, 20]  # W_i // 4
+    assert list(targets) == [1, 2, 3, 4, 5]  # concatenated

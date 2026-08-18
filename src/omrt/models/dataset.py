@@ -64,6 +64,37 @@ def _pad_width_to(t: Tensor, min_w: int) -> Tensor:
     return torch.cat([t, pad], dim=2)
 
 
+def collate_fn(
+    batch: list[tuple[Tensor, Tensor]]
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Batch (image, target) pairs into padded tensors + CTC length tensors.
+
+    Args:
+        batch: list of (image[1, 128, W_i], target[L_i]) tuples
+
+    Returns:
+        (images[N, 1, 128, Wmax], targets[ΣL_i] int64, input_lengths[N] int64, target_lengths[N] int64)
+        where input_lengths[i] = W_i // 4, target_lengths[i] = L_i.
+
+    Asserts CTC width constraint: input_lengths[i] >= target_lengths[i] for all i.
+    Images right-padded to batch-max width with paper=1.0.
+    Targets concatenated into 1-D tensor.
+    """
+    input_lengths = torch.tensor(
+        [img.shape[2] // 4 for img, _ in batch], dtype=torch.int64
+    )
+    target_lengths = torch.tensor([tgt.shape[0] for _, tgt in batch], dtype=torch.int64)
+    assert torch.all(
+        input_lengths >= target_lengths
+    ), "CTC width constraint violated: W/4 < L"
+    max_w = max(img.shape[2] for img, _ in batch)
+    images = torch.ones(len(batch), 1, 128, max_w)  # paper=1.0
+    for i, (img, _) in enumerate(batch):
+        images[i, :, :, : img.shape[2]] = img
+    targets = torch.cat([tgt for _, tgt in batch])
+    return images, targets, input_lengths, target_lengths
+
+
 class PrimusDataset(Dataset[tuple[Tensor, Tensor]]):
     """PrIMuS incipits as ``(image[1,128,W], target_ids[L])`` pairs, with ``W >= 4*L``
     guaranteed by right-padding with paper so CTC always has enough frames to emit L symbols."""
