@@ -9,6 +9,7 @@ import torch
 from omrt.models import CRNN, CRNNModel, Vocabulary
 from omrt.models.dataset import iter_samples, list_incipit_ids
 from omrt.models.metrics import dataset_token_ser
+from omrt.models.train import TrainConfig, select_device, train
 
 _SAMPLE = "data/primus_sample/package_aa"
 
@@ -30,3 +31,25 @@ def test_token_ser_is_zero_for_perfect_predictions():
     gold = {int(img.sum()): toks for img, toks in iter_samples(_SAMPLE, ids)}
     model = _PerfectModel(gold)
     assert dataset_token_ser(model, _SAMPLE, ids) == 0.0
+
+
+def test_select_device_falls_back_to_cpu():
+    assert select_device("cpu").type == "cpu"
+
+
+@pytest.mark.skipif(not list_incipit_ids(_SAMPLE), reason="PrIMuS sample absent")
+def test_train_smoke_runs_one_step_and_checkpoints(tmp_path):
+    cfg = TrainConfig(
+        root=_SAMPLE,
+        out_dir=str(tmp_path),
+        device="cpu",
+        max_steps=1,
+        batch_size=4,
+        val_every=1,
+        train_ids=list_incipit_ids(_SAMPLE)[:8],
+        val_ids=list_incipit_ids(_SAMPLE)[8:12],
+    )
+    ckpt = train(cfg)
+    assert (tmp_path / "best.pt").exists()
+    reloaded = CRNNModel.load(str(tmp_path / "best.pt"), torch.device("cpu"))
+    assert reloaded.vocab.size == ckpt["vocab_size"]
