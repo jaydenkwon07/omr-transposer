@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 pytest.importorskip("torch")
@@ -9,7 +11,7 @@ import torch
 from omrt.models import CRNN, CRNNModel, Vocabulary
 from omrt.models.dataset import iter_samples, list_incipit_ids
 from omrt.models.metrics import dataset_token_ser
-from omrt.models.train import TrainConfig, select_device, train
+from omrt.models.train import TrainConfig, load_split, select_device, train
 
 _SAMPLE = "data/primus_sample/package_aa"
 
@@ -39,6 +41,19 @@ def test_select_device_falls_back_to_cpu():
 
 def test_select_device_never_auto_selects_mps():
     assert select_device(None).type in ("cuda", "cpu")
+
+
+def test_load_split_reads_train_and_val(tmp_path):
+    split_path = tmp_path / "split.json"
+    split_path.write_text(
+        json.dumps({"train": ["a", "b"], "val": ["c"], "test": ["d", "e"]}),
+        encoding="utf-8",
+    )
+    train_ids, val_ids = load_split(str(split_path))
+    assert train_ids == ["a", "b"]
+    assert val_ids == ["c"]
+    assert "d" not in train_ids and "d" not in val_ids
+    assert "e" not in train_ids and "e" not in val_ids
 
 
 def test_train_raises_on_empty_train_ids(tmp_path):

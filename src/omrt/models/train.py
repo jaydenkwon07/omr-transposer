@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,7 +11,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from omrt.models.crnn import CRNN
-from omrt.models.dataset import PrimusDataset, collate_fn, iter_samples, list_incipit_ids
+from omrt.models.dataset import PrimusDataset, collate_fn, iter_samples
 from omrt.models.metrics import dataset_token_ser
 from omrt.models.predict import CRNNModel
 from omrt.models.vocab import Vocabulary
@@ -147,6 +148,15 @@ def _resume(
     return model, opt, vocab, int(ckpt["step"]), float(ckpt["best_val_ser"])
 
 
+def load_split(path: str) -> tuple[list[str], list[str]]:
+    """Read a ``split.json`` of the form ``{"train": [...], "val": [...], "test": [...]}``
+    and return ``(train_ids, val_ids)``. The ``test`` key is deliberately never returned —
+    it is the held-out set and must never feed training or validation."""
+    with open(path, encoding="utf-8") as fh:
+        split = json.load(fh)
+    return split["train"], split["val"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the seam-2 CRNN+CTC model on PrIMuS.")
     parser.add_argument("--root", required=True, help="PrIMuS incipit tree root")
@@ -157,10 +167,14 @@ def main() -> None:
     parser.add_argument("--val-every", type=int, default=1000)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--resume", default=None, help="path to a checkpoint to resume from")
+    parser.add_argument(
+        "--split",
+        default="data/primus/split.json",
+        help="path to split.json ({train, val, test} incipit id lists); test is never used here",
+    )
     args = parser.parse_args()
 
-    ids = list_incipit_ids(args.root)
-    split = max(1, int(len(ids) * 0.9))
+    train_ids, val_ids = load_split(args.split)
     cfg = TrainConfig(
         root=args.root,
         out_dir=args.out_dir,
@@ -169,8 +183,8 @@ def main() -> None:
         batch_size=args.batch_size,
         val_every=args.val_every,
         patience=args.patience,
-        train_ids=ids[:split],
-        val_ids=ids[split:],
+        train_ids=train_ids,
+        val_ids=val_ids,
     )
 
     if args.resume:
