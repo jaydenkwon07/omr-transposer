@@ -21,6 +21,14 @@ datagen = [
     "opencv-python-headless==4.10.0.84",
 ]
 
+# Project 2 model stack. Kept out of core so the Project 0 CLI installs without torch.
+# numpy + opencv mirror the datagen image stack (reused via read_gray_over_white).
+models = [
+    "torch>=2.3",
+    "numpy>=2.0",
+    "opencv-python-headless==4.10.0.84",
+]
+
 [project.scripts]
 omrt = "omrt.symbolic.cli:main"
 
