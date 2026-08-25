@@ -16,6 +16,7 @@ from omrt.models.dataset import (
     iter_samples,
     list_incipit_ids,
 )
+from omrt.models.train import select_device
 
 _SAMPLE = "data/primus_sample/package_aa"
 _RUN = os.environ.get("RUN_CANARY") == "1"
@@ -34,7 +35,8 @@ def test_model_can_overfit_eight_examples():
     ds = PrimusDataset(_SAMPLE, ids, vocab)
     loader = DataLoader(ds, batch_size=8, collate_fn=collate_fn)
 
-    model = CRNN(vocab_size=vocab.size)
+    device = select_device(os.environ.get("CANARY_DEVICE"))
+    model = CRNN(vocab_size=vocab.size).to(device)
     loss_fn = torch.nn.CTCLoss(blank=0, zero_infinity=True)
     opt = torch.optim.Adadelta(model.parameters(), lr=1.0)
 
@@ -42,6 +44,10 @@ def test_model_can_overfit_eight_examples():
     last = float("inf")
     for _ in range(_MAX_EPOCHS):
         for images, targets, input_lengths, target_lengths in loader:
+            images = images.to(device)
+            targets = targets.to(device)
+            input_lengths = input_lengths.to(device)
+            target_lengths = target_lengths.to(device)
             opt.zero_grad()
             out = model(images)
             loss = loss_fn(out, targets, input_lengths, target_lengths)
