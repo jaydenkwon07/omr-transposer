@@ -12,6 +12,7 @@ Reading:
 """
 from __future__ import annotations
 
+import difflib
 import os
 
 import torch
@@ -46,6 +47,28 @@ def token_ser(model, device, samples, vocab) -> float:
             length += len(gold)
     model.train()
     return ops / length if length else 0.0
+
+
+def dump_diffs(model, device, samples, vocab) -> None:
+    """Print per-example gold-vs-greedy-pred diffs so we can see *which* tokens greedy
+    misses on a fully-trained model (adjacent-dup collapse vs a real error pattern)."""
+    model.eval()
+    print("\n=== per-example diffs (- gold-only, + pred-only) ===")
+    with torch.no_grad():
+        for idx, (image, gold) in enumerate(samples):
+            x = preprocess(image).unsqueeze(0).to(device)
+            lp = model(x)
+            ids = ctc_greedy_decode(lp.cpu(), torch.tensor([lp.shape[0]]))[0]
+            pred = vocab.decode(ids)
+            d = levenshtein(gold, pred).distance
+            print(f"\n[{idx}] L={len(gold)} pred_len={len(pred)} ops={d}")
+            if d:
+                sm = difflib.SequenceMatcher(a=gold, b=pred, autojunk=False)
+                for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                    if tag == "equal":
+                        continue
+                    print(f"   {tag:8} gold[{i1}:{i2}]={gold[i1:i2]}  pred[{j1}:{j2}]={pred[j1:j2]}")
+    model.train()
 
 
 def main() -> None:
@@ -91,6 +114,8 @@ def main() -> None:
             if ser <= 0.02:
                 print("REACHED target SER<=0.02")
                 break
+
+    dump_diffs(model, device, samples, vocab)
 
 
 if __name__ == "__main__":
