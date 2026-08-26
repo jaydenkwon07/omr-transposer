@@ -16,6 +16,9 @@ from omrt.models.metrics import dataset_token_ser
 from omrt.models.predict import CRNNModel
 from omrt.models.vocab import Vocabulary
 
+# Max global grad-norm. RNN+CTC needs clipping; without it Adadelta(lr=1.0) diverges to inf.
+_GRAD_CLIP_NORM = 5.0
+
 
 @dataclass
 class TrainConfig:
@@ -102,6 +105,10 @@ def _run_loop(
                 out = model(images)
                 loss = loss_fn(out, targets, input_lengths, target_lengths)
                 loss.backward()
+                # RNN+CTC gradients explode without this; unclipped, an Adadelta(lr=1.0)
+                # step can blow the LSTM up to inf, which CTCLoss(zero_infinity=True) then
+                # silently masks to 0 — a "converged" loss over a dead model. See ADR 0012.
+                torch.nn.utils.clip_grad_norm_(model.parameters(), _GRAD_CLIP_NORM)
                 opt.step()
                 step += 1
 
