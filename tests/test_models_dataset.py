@@ -6,6 +6,7 @@ pytest.importorskip("torch")
 import torch
 
 from omrt.models.dataset import (
+    _TRAIL_PAD,
     PrimusDataset,
     collate_fn,
     iter_samples,
@@ -23,8 +24,10 @@ def test_preprocess_fixes_height_and_preserves_aspect():
     t = preprocess(img)
     assert t.shape[0] == 1
     assert t.shape[1] == 128
-    # 200 * (128/64) = 400
-    assert t.shape[2] == 400
+    # 200 * (128/64) = 400 content columns, plus the right-side white commit margin.
+    assert t.shape[2] == 400 + _TRAIL_PAD
+    # the appended margin is white (paper=1.0) so CTC greedy can commit the final label.
+    assert bool((t[0, :, 400:] == 1.0).all())
     assert t.dtype.is_floating_point
     assert 0.0 <= float(t.min()) and float(t.max()) <= 1.0
 

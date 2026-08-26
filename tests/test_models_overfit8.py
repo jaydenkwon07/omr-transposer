@@ -27,11 +27,13 @@ _SAMPLE = "data/primus_sample/package_aa"
 _RUN = os.environ.get("RUN_CANARY") == "1"
 _MAX_EPOCHS = int(os.environ.get("CANARY_EPOCHS", "2500"))
 
-# Overfit acceptance: <=2% token error on the 8 memorized examples. NOT exact-match:
-# greedy CTC decode structurally cannot recover adjacent-duplicate tokens (e.g. two identical
-# eighth-notes need a blank exactly between them), so a perfectly-trained model legitimately
-# tops out around 7/8 exact. Token-SER sidesteps that greedy edge while still catching a broken
-# model cold — a blank-collapsed net scores ~1.0, fifty times over this bar. See ADR 0012.
+# Overfit acceptance: <=2% token error on the 8 memorized examples. NOT exact-match: greedy CTC
+# cannot recover an adjacent-duplicate token (two identical eighths need a blank exactly between
+# them), so exact 8/8 is flaky even for a correct model. Token-SER sidesteps that greedy edge
+# while still catching a broken model cold — a blank-collapsed net scores ~1.0, fifty times over
+# this bar. Reaching 0.02 also depends on the trailing whitespace margin in preprocess (ADR 0013):
+# without it, greedy has no blank frame to commit the final label and SER floors near 0.076 on
+# tail-token deletions. See ADR 0012 (clipping/gate) and 0013 (margin).
 _SER_TARGET = 0.02
 
 

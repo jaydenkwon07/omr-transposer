@@ -17,21 +17,24 @@ from omrt.models.vocab import Vocabulary
 
 _TARGET_HEIGHT = 128
 
+# Right-side white margin (post-resize columns) appended by preprocess. PrIMuS incipits are
+# cropped flush to the last symbol (0-1 trailing px), which leaves CTC greedy no trailing blank
+# frame to commit the final label -> systematic tail-token deletion that near-zero loss can't fix
+# (measured: overfit-8 SER floors at 0.076 with 0 pad, reaches 0.018 with this margin — ADR 0013).
+# 64 px / 16 frames of blank is ample commit room. Overridable via OMRT_TRAIL_PAD for ablation.
+_TRAIL_PAD = 64
+
 
 def preprocess(image: Image) -> Tensor:
     """Grayscale staff -> [1, 128, W] float tensor, aspect ratio preserved, values in [0,1]
-    (paper≈1.0, ink≈0.0). Height is fixed at 128 (paper Table 2).
-
-    OMRT_TRAIL_PAD (experimental): append N white columns on the right. PrIMuS incipits are
-    cropped flush to the last symbol (0-1 trailing px), leaving CTC greedy no blank frame to
-    commit the final label -> systematic tail-token deletion. Applied in BOTH train and eval
-    (this one function feeds the dataset and CRNNModel.predict), so the frame budget stays
-    consistent. Default 0 = no change."""
+    (paper≈1.0, ink≈0.0). Height is fixed at 128 (paper Table 2). A ``_TRAIL_PAD``-wide white
+    margin is appended on the right (see the constant) — applied here so BOTH the training path
+    (PrimusDataset) and the eval path (CRNNModel.predict) get an identical frame budget."""
     h, w = image.shape[:2]
     new_w = max(1, round(w * (_TARGET_HEIGHT / h)))
     resized = cv2.resize(image, (new_w, _TARGET_HEIGHT), interpolation=cv2.INTER_AREA)
     arr = resized.astype(np.float32) / 255.0
-    trail = int(os.environ.get("OMRT_TRAIL_PAD", "0"))
+    trail = int(os.environ.get("OMRT_TRAIL_PAD", str(_TRAIL_PAD)))
     if trail > 0:
         arr = np.concatenate([arr, np.ones((_TARGET_HEIGHT, trail), dtype=np.float32)], axis=1)
     return torch.from_numpy(arr).unsqueeze(0)
