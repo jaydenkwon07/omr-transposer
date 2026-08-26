@@ -20,11 +20,20 @@ _TARGET_HEIGHT = 128
 
 def preprocess(image: Image) -> Tensor:
     """Grayscale staff -> [1, 128, W] float tensor, aspect ratio preserved, values in [0,1]
-    (paper≈1.0, ink≈0.0). Height is fixed at 128 (paper Table 2)."""
+    (paper≈1.0, ink≈0.0). Height is fixed at 128 (paper Table 2).
+
+    OMRT_TRAIL_PAD (experimental): append N white columns on the right. PrIMuS incipits are
+    cropped flush to the last symbol (0-1 trailing px), leaving CTC greedy no blank frame to
+    commit the final label -> systematic tail-token deletion. Applied in BOTH train and eval
+    (this one function feeds the dataset and CRNNModel.predict), so the frame budget stays
+    consistent. Default 0 = no change."""
     h, w = image.shape[:2]
     new_w = max(1, round(w * (_TARGET_HEIGHT / h)))
     resized = cv2.resize(image, (new_w, _TARGET_HEIGHT), interpolation=cv2.INTER_AREA)
     arr = resized.astype(np.float32) / 255.0
+    trail = int(os.environ.get("OMRT_TRAIL_PAD", "0"))
+    if trail > 0:
+        arr = np.concatenate([arr, np.ones((_TARGET_HEIGHT, trail), dtype=np.float32)], axis=1)
     return torch.from_numpy(arr).unsqueeze(0)
 
 
